@@ -38,35 +38,36 @@ export NCCL_ASYNC_ERROR_HANDLING=1
 export HF_ENDPOINT=https://hf-mirror.com
 export HF_HUB_ENABLE_HF_TRANSFER=0
 export ACCELERATE_LOG_LEVEL=info
-export WANDB_API_KEY=85a3c5af1814c40a13d5d9e64783857cf260b506
-export WANDB_PROJECT=ReplayGRPO_Math
+export WANDB_PROJECT="verl_grpo_prev_epoch_qwen2_5_1_5b_MATH"
+export WANDB_ENTITY="haechan-kaist"  # optional if using teams
 export no_proxy="$HOSTNAME"
 export NO_PROXY="$HOSTNAME"
 
 #--------------------------------------------------
 # Paths & model
 #--------------------------------------------------
-PROJECT_HOME=/mnt/petrelfs/lisiheng/RePO
-OUTPUT_HOME=/mnt/lustrenew/mllm_safety-shared/lisiheng
+PROJECT_HOME=/home/server28/haechan_workspace/GRPO/RePO
+OUTPUT_HOME=$PROJECT_HOME/outputs
 
-MODEL_DIR=/mnt/lustrenew/mllm_safety-shared/models/huggingface/Qwen
-MODEL_NAME=Qwen3-1.7B
-MAX_COMPLETION_LENGTH=1024
+# MODEL_DIR=$PROJECT_HOME/models
+# MODEL_NAME=Qwen3-1.7B-Base
+MAX_COMPLETION_LENGTH=4096
 
-MODEL_NAME_OR_PATH=$MODEL_DIR/$MODEL_NAME
+MODEL_NAME_OR_PATH=Qwen3-1.7B-Base
 
-DATASET_DIR=data
-DATASET_NAME=DeepMath-1024samples
+DATASET_DIR=$PROJECT_HOME/data
+DATASET_NAME=DAPO-17280
 DATASET_NAME_OR_PATH=$DATASET_DIR/$DATASET_NAME
 
 #--------------------------------------------------
 # Training hyperparams
 #--------------------------------------------------
-NUM_TRAIN_EPOCHS=3
+NUM_TRAIN_EPOCHS=6
 REWARD_FUNCS=accuracy
-MAX_PROMPT_LENGTH=512
+MAX_PROMPT_LENGTH=1024
 TEMPERATURE=1.0
-TOP_K=50
+TOP_K=-1
+TOP_P=1.0
 LOSS_TYPE=grpo
 BETA=0.0
 EPSILON=0.20
@@ -133,6 +134,7 @@ accelerate launch \
     --num_generations=$NUM_GENERATIONS \
     --temperature=$TEMPERATURE \
     --top_k=$TOP_K \
+    --top_p=$TOP_P \
     --loss_type=$LOSS_TYPE \
     --beta=$BETA \
     --epsilon=$EPSILON \

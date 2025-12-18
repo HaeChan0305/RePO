@@ -15,9 +15,8 @@ import datasets
 from datasets import load_dataset, DatasetDict
 from transformers import AutoTokenizer
         
-def process_deepmath(
-    sample_size: Optional[int] = None,
-    max_length: Optional[int] = 4096,
+def process_dapo17k(
+    max_length: Optional[int] = 1024,
     num_proc: int = 8
 ) -> DatasetDict:
     """
@@ -34,17 +33,50 @@ def process_deepmath(
         DatasetDict: The final processed dataset.
     """
     # 1. Load the raw DeepMath dataset
-    dataset = load_dataset("zwhe99/DeepMath-103K")
+    dataset = load_dataset("BytedTsinghua-SIA/DAPO-Math-17k")["train"]
+    
+    def get_question(example):
+        return example["prompt"][0]["content"]
+    
+    seen_questions = set()
+    unique_indices = []
+    for idx, example in enumerate(dataset):
+        question = get_question(example)
+        if question not in seen_questions:
+            seen_questions.add(question)
+            unique_indices.append(idx)
+    
+    dataset = dataset.select(unique_indices)
+    print(f"After deduplication: {len(dataset)}")
+    
+    dataset = dataset.select(range(len(dataset) - len(dataset) % 128 + 8))
+    print(f"After filtering to 128-batch: {len(dataset)}")
 
+    dataset = DatasetDict({"train": dataset})
+    
     # 2. Define preprocessing function
     def _process(item):
-        item["prompt"] = [{"role": "user", "content": item["question"]}]
+        original_opening_instruction = "Solve the following math problem step by step. The last line of your response should be of the form Answer: $Answer (without quotes) where $Answer is the answer to the problem.\n\n"
+        original_closing_instruction = '\n\nRemember to put your answer on its own line after \"Answer:\".'
+        instruction_following = "Let's think step by step and output the final answer within \\boxed{}.\n\n"
+
+        question = item.pop("prompt")[0]["content"]
+        if original_opening_instruction in question and original_closing_instruction in question:
+            question = question.replace(original_opening_instruction, "")
+            question = question.replace(original_closing_instruction, "")
+        else:
+            assert False, "Instruction following is not supported"
+        
+        question = instruction_following + question
+        solution = item.pop("reward_model")["ground_truth"]
+        
+
+        item["prompt"] = [{"role": "user", "content": question}]
         item["messages"] = [
-            {"role": "user", "content": item["question"]},
-            {"role": "assistant", "content": item["r1_solution_1"]},
+            {"role": "user", "content": question},
         ]
-        item["solution"] = item["r1_solution_1"]
-        item["ground_truth"] = item["final_answer"]
+        item["solution"] = solution
+        item["ground_truth"] = solution
         return item
 
     # 3. Apply mapping and drop unused columns
@@ -53,7 +85,7 @@ def process_deepmath(
     dataset = dataset.map(_process, num_proc=num_proc, remove_columns=drop_cols)
 
     # 4. Initialize tokenizer for length filtering
-    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Math-7B")
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3-1.7B-Base")
 
     # 5. Filter by token length if max_length is specified
     if max_length is not None:
@@ -66,19 +98,13 @@ def process_deepmath(
 
         dataset = dataset.filter(_filter_by_length, num_proc=num_proc)
 
-    # 6. Optionally sample the training split
-    if sample_size:
-        dataset["train"] = dataset["train"].shuffle(seed=42).select(range(sample_size))
-
     # 7. Print final split sizes
     print("Final dataset splits and sizes:")
     for split, ds in dataset.items():
         print(f"- {split}: {len(ds)} examples")
 
     # 8. Save to disk with descriptive folder name
-    size_desc = f"{sample_size}" if sample_size else "all"
-    len_desc = f"-maxlen{max_length}" if max_length else ""
-    folder_name = f"DeepMath-{size_desc}samples{len_desc}"
+    folder_name = f"DAPO-{len(dataset['train'])}"
     save_path = os.path.join("data", folder_name)
     os.makedirs(save_path, exist_ok=True)
     dataset.save_to_disk(save_path)
@@ -87,5 +113,4 @@ def process_deepmath(
     return dataset
 
 if __name__ == "__main__":
-    
-    process_deepmath(sample_size=1024, max_length=None, num_proc=8)
+    process_dapo17k(max_length=1024, num_proc=8)
